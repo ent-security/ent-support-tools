@@ -9,10 +9,11 @@ sends **no credentials** — the scripts only inspect network reachability and T
 | Tool | What it's for |
 |------|---------------|
 | [`connectivity-check/verify-ent-connectivity.sh`](connectivity-check/verify-ent-connectivity.sh) | Verify a workstation can reach your ent tenant admin API, and diagnose the common case where the portal loads but data never appears (usually a corporate TLS-inspection / Zero-Trust proxy). |
+| [`connectivity-check/Test-PlatformConnectivity.ps1`](connectivity-check/Test-PlatformConnectivity.ps1) | Verify a Windows endpoint can reach the ent platform. Checks DNS, TCP, TLS, and the platform health endpoint, and reports which stage fails. |
 
 ---
 
-## Connectivity check
+## Admin API Connectivity check (verify-ent-connectivity.sh)
 
 If the ent operator portal loads but pages stay empty — endpoints, users, or
 activity show zeros, or you see `CORS request did not succeed` errors in the
@@ -89,6 +90,78 @@ device off that network (e.g. a phone hotspot).
 ### Safety
 
 The script only issues `GET` and `OPTIONS` requests to the endpoint you give it.
+It sends no credentials, stores nothing, and changes nothing.
+
+---
+
+## Platform connectivity check (Test-PlatformConnectivity.ps1)
+
+If an endpoint isn't reporting to the ent platform, this script tells you **which
+stage** of the connection is failing: name resolution, the network path, the TLS
+handshake, or the platform itself.
+
+### Requirements
+
+- Windows PowerShell 5.1 or later. No installation and no administrator rights needed.
+
+### Get it
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/ent-security/ent-support-tools/main/connectivity-check/Test-PlatformConnectivity.ps1 -OutFile Test-PlatformConnectivity.ps1
+```
+
+…or clone the repo and run it from `connectivity-check\`.
+
+### Run it
+
+```powershell
+.\Test-PlatformConnectivity.ps1 -Address <platform-host> [-Port <port>]
+```
+
+- `-Address` — the platform hostname or IP the endpoint reports to. This is the
+  `address` of the server entry in the agent configuration.
+- `-Port` — optional; defaults to `443`.
+- `-ConfigJson <path>` — optional; read the address and port from the first server
+  entry of an agent configuration file instead of passing them.
+- `-TimeoutSec <n>` — optional; per-stage timeout, defaults to `5`.
+
+Examples:
+
+```powershell
+.\Test-PlatformConnectivity.ps1 -Address platform.example.com
+.\Test-PlatformConnectivity.ps1 -ConfigJson C:\path\to\config.json
+```
+
+If PowerShell reports that running scripts is disabled on this system, allow local
+scripts for your user account (no administrator rights needed):
+
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+If the script was downloaded through a browser, Windows may still block it. Clear
+that with `Unblock-File .\Test-PlatformConnectivity.ps1`.
+
+If your organization's policy prevents changing the execution policy, run the script
+for a single session instead:
+`powershell -ExecutionPolicy Bypass -File .\Test-PlatformConnectivity.ps1 -Address <platform-host>`.
+
+### Reading the output
+
+The script prints the machine's proxy settings, then checks each stage and prints
+`PASS` or `FAIL` with a hint when one fails. Exit code is `0` if every check passed
+and `1` otherwise.
+
+| Stage | What it checks |
+|-------|----------------|
+| `DNS` | The address resolves to an IP. |
+| `TCP` | A connection to the port succeeds. A timeout usually means a firewall is dropping traffic; "actively refused" means nothing is listening there. |
+| `TLS` | The TLS handshake completes. Shows the protocol, the server certificate's subject, issuer and expiry, and whether this machine trusts it. A certificate issued by a corporate or proxy CA means HTTPS inspection is in the path. |
+| `HEALTH` | An unauthenticated `GET /health` returns a 2xx status. A 5xx means the platform behind the network path is unhealthy; a 407 means an authenticating proxy is blocking the request. |
+
+### Safety
+
+The script only opens a connection and issues a single unauthenticated `GET /health`.
 It sends no credentials, stores nothing, and changes nothing.
 
 ---
