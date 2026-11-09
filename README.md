@@ -10,6 +10,7 @@ sends **no credentials** — the scripts only inspect network reachability and T
 |------|---------------|
 | [`connectivity-check/verify-ent-connectivity.sh`](connectivity-check/verify-ent-connectivity.sh) | Verify a workstation can reach your ent tenant admin API, and diagnose the common case where the portal loads but data never appears (usually a corporate TLS-inspection / Zero-Trust proxy). |
 | [`connectivity-check/Test-PlatformConnectivity.ps1`](connectivity-check/Test-PlatformConnectivity.ps1) | Verify a Windows endpoint can reach the ent platform. Checks DNS, TCP, TLS, and the platform health endpoint, and reports which stage fails. |
+| [`connectivity-check/test-platform-connectivity.sh`](connectivity-check/test-platform-connectivity.sh) | The same platform check for macOS and Linux endpoints. |
 
 ---
 
@@ -163,6 +164,37 @@ and `1` otherwise.
 
 The script only opens a connection and issues a single unauthenticated `GET /health`.
 It sends no credentials, stores nothing, and changes nothing.
+
+### macOS and Linux endpoints (test-platform-connectivity.sh)
+
+The same four stages, with the same `PASS` / `FAIL` output, hints and exit codes, for
+macOS and Linux endpoints. It needs only `bash` and `curl` (preinstalled on macOS and
+most Linux distributions); no administrator rights.
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/ent-security/ent-support-tools/main/connectivity-check/test-platform-connectivity.sh
+chmod +x test-platform-connectivity.sh
+
+./test-platform-connectivity.sh -a <platform-host> [-p <port>] [-t <seconds>]
+./test-platform-connectivity.sh -c /path/to/config.json
+```
+
+- `-a`, `--address`: the platform hostname or IP the endpoint reports to.
+- `-p`, `--port`: optional; defaults to `443`.
+- `-c`, `--config`: read the address and port from the first server entry of an agent
+  configuration file (uses `jq`, `python3` or macOS `plutil`, whichever is present).
+- `-t`, `--timeout`: optional per-stage timeout in seconds; defaults to `5`.
+
+Instead of the WinHTTP/WinINET proxy settings it prints proxy environment variables,
+the macOS system HTTPS proxy and PAC URL (`scutil --proxy`), or the GNOME proxy mode.
+On a DNS failure it lists the resolvers from `scutil --dns` or `/etc/resolv.conf`.
+All later stages are pinned to the address resolved in the DNS stage. The TLS stage
+also flags certificates issued by common HTTPS-inspection products.
+
+Exit code is `0` if every check passed, `1` if any failed, and `2` for a usage error.
+
+Tests run against local HTTPS/HTTP servers and need `python3` and `openssl`:
+`./connectivity-check/tests/run-tests.sh` (pass `/bin/bash` to test macOS's bash 3.2).
 
 ---
 
